@@ -1,0 +1,45 @@
+From 403bb480066605ee6270fa2c7c1fd55bf5d1dbe6 Mon Sep 17 00:00:00 2001
+From: Ondrej Holy <oholy@redhat.com>
+Date: Tue, 15 Jun 2021 10:10:11 +0200
+Subject: [PATCH] Fix crashes under FIPS
+
+When FIPS mode is enabled, gnutls_dh_params_generate2 returns 0, because
+DH_BITS is 1024, which is too small for FIPS. This causes
+gnutls_anon_set_server_dh_params to crash. Let's use
+gnutls_sec_param_to_pk_bits instead of the hardcoded DH_BITS value. It
+returns 2048 for GNUTLS_SEC_PARAM_MEDIUM, which is big enough. Just a note
+that the similar downstream patch is used for TigerVNC already.
+---
+ server/libvncserver/auth.c | 8 +++-----
+ 1 file changed, 3 insertions(+), 5 deletions(-)
+
+diff --git a/server/libvncserver/auth.c b/server/libvncserver/auth.c
+index cfaed55..639d3c5 100644
+--- a/server/libvncserver/auth.c
++++ b/server/libvncserver/auth.c
+@@ -32,19 +32,17 @@ void
+ rfbAuthInitScreen(rfbScreenInfoPtr rfbScreen)
+ {
+ #ifdef VINO_HAVE_GNUTLS
+-#define DH_BITS 1024
+-
+     gnutls_global_init();
+   
+     gnutls_anon_allocate_server_credentials(&rfbScreen->anonCredentials);
+ 
+     gnutls_dh_params_init(&rfbScreen->dhParams);
+-    gnutls_dh_params_generate2(rfbScreen->dhParams, DH_BITS);
++    gnutls_dh_params_generate2(rfbScreen->dhParams,
++                               gnutls_sec_param_to_pk_bits (GNUTLS_PK_DH,
++                                                            GNUTLS_SEC_PARAM_MEDIUM));
+ 
+     gnutls_anon_set_server_dh_params(rfbScreen->anonCredentials,
+ 				     rfbScreen->dhParams);
+-
+-#undef DH_BITS
+ #endif /* VINO_HAVE_GNUTLS */
+ }
+ 
+-- 
+2.31.1
+
